@@ -73,6 +73,66 @@ Automated daily network health report sent via Telegram at 6 AM. Monitors your U
 - `GET /proxy/network/integration/v1/sites/{siteId}/devices` - Get network devices
 - `GET /proxy/network/integration/v1/sites/{siteId}/events` - Get security events
 
+---
+
+### 2. Daily Weather Email
+**File:** `workflows/daily-weather-email.json`
+
+Automated daily weather report sent via Gmail at 6 AM. Fetches current conditions and 5-day forecast from OpenWeatherMap and delivers a beautifully formatted HTML email.
+
+#### Features
+- **Current Conditions** - Temperature, feels like, humidity, wind speed
+- **Sunrise/Sunset Times** - Localized to your timezone
+- **5-Day Forecast** - Daily high/low temps with weather icons
+- **Weather Icons** - Dynamic icons from OpenWeatherMap
+- **Clickable Link** - Direct link to full forecast on OpenWeatherMap
+
+#### Sample Email Preview
+The email includes:
+- Gradient header with location and date
+- Large current temperature with weather icon
+- Current conditions cards (feels like, humidity, wind)
+- Sunrise and sunset times
+- 5-day forecast cards with high/low temps
+- "View Full Forecast" button linking to OpenWeatherMap
+
+#### Prerequisites
+- [OpenWeatherMap API key](https://openweathermap.org/api) (free tier works)
+- Gmail account with OAuth2 configured in n8n
+
+#### Setup Instructions
+
+1. **Import the workflow** into n8n via *Workflows → Import from File*
+
+2. **Create OpenWeatherMap Credential:**
+   - Go to *Settings → Credentials → Add Credential*
+   - Select **OpenWeatherMap API**
+   - API Key: Your OpenWeatherMap API key
+
+3. **Create Gmail OAuth2 Credential:**
+   - Add Credential → **Gmail OAuth2**
+   - Follow the OAuth2 setup flow with your Google account
+
+4. **Configure the workflow:**
+   - Update `YOUR_ZIP_CODE` in both OpenWeatherMap nodes
+   - Update `YOUR_EMAIL@example.com` in the Gmail node
+   - Adjust the `timeZone` in the Code node to match your location (default: `America/New_York`)
+   
+   Common US timezones:
+   - `America/New_York` (Eastern)
+   - `America/Chicago` (Central)
+   - `America/Denver` (Mountain)
+   - `America/Los_Angeles` (Pacific)
+
+5. **Activate** the workflow
+
+#### Customization Options
+- **Schedule**: Modify the cron expression in the Schedule Trigger (default: `0 6 * * *` for 6 AM daily)
+- **Units**: Change `imperial` to `metric` in OpenWeatherMap nodes for Celsius
+- **Styling**: Edit the HTML template in the Code node to customize colors and layout
+
+---
+
 ## License
 
 MIT
