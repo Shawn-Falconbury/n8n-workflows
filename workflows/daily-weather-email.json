@@ -1,0 +1,127 @@
+{
+  "name": "Daily Weather Email - 6AM",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily 6AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "currentWeather",
+        "format": "imperial",
+        "locationSelection": "zipCode",
+        "zipCode": "YOUR_ZIP_CODE",
+        "language": "en"
+      },
+      "id": "current-weather",
+      "name": "Get Current Weather",
+      "type": "n8n-nodes-base.openWeatherMap",
+      "typeVersion": 1,
+      "position": [250, -100],
+      "credentials": {
+        "openWeatherMapApi": {
+          "id": "openweathermap",
+          "name": "OpenWeatherMap API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "5DayForecast",
+        "format": "imperial",
+        "locationSelection": "zipCode",
+        "zipCode": "YOUR_ZIP_CODE",
+        "language": "en"
+      },
+      "id": "forecast-weather",
+      "name": "Get 5-Day Forecast",
+      "type": "n8n-nodes-base.openWeatherMap",
+      "typeVersion": 1,
+      "position": [250, 100],
+      "credentials": {
+        "openWeatherMapApi": {
+          "id": "openweathermap",
+          "name": "OpenWeatherMap API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "merge-weather-data",
+      "name": "Merge Weather Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [500, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get current weather and forecast data\nconst current = $('Get Current Weather').first().json;\nconst forecastData = $('Get 5-Day Forecast').first().json;\n\n// Format date\nconst today = new Date();\nconst dateStr = today.toLocaleDateString('en-US', { \n  weekday: 'long', \n  year: 'numeric', \n  month: 'long', \n  day: 'numeric' \n});\n\n// Get location name\nconst location = current.name || 'Your City';\n\n// Current weather details\nconst currentTemp = Math.round(current.main.temp);\nconst feelsLike = Math.round(current.main.feels_like);\nconst humidity = current.main.humidity;\nconst windSpeed = Math.round(current.wind.speed);\nconst description = current.weather[0].description;\nconst icon = current.weather[0].icon;\n\n// Sunrise/sunset - adjust timeZone to your location\nconst sunrise = new Date(current.sys.sunrise * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });\nconst sunset = new Date(current.sys.sunset * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/New_York' });\n\n// Process 5-day forecast\nconst forecastList = forecastData.list || [];\nconst dailyForecasts = {};\nforecastList.forEach(item => {\n  const date = new Date(item.dt * 1000);\n  const dayKey = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York' });\n  if (!dailyForecasts[dayKey]) {\n    dailyForecasts[dayKey] = { temps: [], icons: [], descriptions: [] };\n  }\n  dailyForecasts[dayKey].temps.push(item.main.temp);\n  dailyForecasts[dayKey].icons.push(item.weather[0].icon);\n  dailyForecasts[dayKey].descriptions.push(item.weather[0].description);\n});\n\nlet forecastCells = '';\nlet count = 0;\nfor (const [day, data] of Object.entries(dailyForecasts)) {\n  if (count >= 5) break;\n  const highTemp = Math.round(Math.max(...data.temps));\n  const lowTemp = Math.round(Math.min(...data.temps));\n  const midIcon = data.icons[Math.floor(data.icons.length / 2)];\n  const midDesc = data.descriptions[Math.floor(data.descriptions.length / 2)];\n  forecastCells += `<td style=\"text-align:center;padding:12px 8px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:12px;width:18%\"><div style=\"font-weight:600;color:#fff;font-size:13px\">${day}</div><img src=\"https://openweathermap.org/img/wn/${midIcon}@2x.png\" style=\"width:50px;height:50px\"><div style=\"color:#fff;font-size:11px;text-transform:capitalize\">${midDesc}</div><div style=\"color:#fff;font-size:14px\"><strong>${highTemp}°</strong><span style=\"opacity:0.7\">/${lowTemp}°</span></div></td>`;\n  count++;\n}\n\nconst htmlEmail = `<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body style=\"margin:0;padding:0;font-family:'Segoe UI',sans-serif;background:#f0f4f8\"><div style=\"max-width:600px;margin:0 auto;padding:20px\"><table width=\"100%\" style=\"background:linear-gradient(135deg,#1e3c72 0%,#2a5298 100%);border-radius:20px 20px 0 0\"><tr><td style=\"padding:30px;text-align:center\"><h1 style=\"color:#fff;margin:0;font-size:26px\">☀️ Daily Weather Report</h1><p style=\"color:rgba(255,255,255,0.9);margin:10px 0 0;font-size:15px\">${location} • ${dateStr}</p></td></tr></table><table width=\"100%\" style=\"background:#fff\"><tr><td style=\"padding:25px;text-align:center\"><img src=\"https://openweathermap.org/img/wn/${icon}@4x.png\" style=\"width:100px;height:100px\"><div style=\"font-size:58px;font-weight:300;color:#1e3c72\">${currentTemp}°F</div><div style=\"font-size:18px;color:#666;text-transform:capitalize;margin-bottom:20px\">${description}</div><table width=\"100%\" cellspacing=\"10\"><tr><td style=\"background:#f8f9fa;border-radius:12px;padding:15px;text-align:center;width:33%\"><div style=\"color:#888;font-size:11px;text-transform:uppercase\">Feels Like</div><div style=\"color:#1e3c72;font-size:22px;font-weight:600\">${feelsLike}°F</div></td><td style=\"background:#f8f9fa;border-radius:12px;padding:15px;text-align:center;width:33%\"><div style=\"color:#888;font-size:11px;text-transform:uppercase\">Humidity</div><div style=\"color:#1e3c72;font-size:22px;font-weight:600\">${humidity}%</div></td><td style=\"background:#f8f9fa;border-radius:12px;padding:15px;text-align:center;width:33%\"><div style=\"color:#888;font-size:11px;text-transform:uppercase\">Wind</div><div style=\"color:#1e3c72;font-size:22px;font-weight:600\">${windSpeed} mph</div></td></tr></table><table width=\"100%\" style=\"margin-top:25px;border-top:1px solid #eee\"><tr><td style=\"text-align:center;width:50%;padding:15px\"><div style=\"font-size:28px\">🌅</div><div style=\"color:#888;font-size:12px\">Sunrise</div><div style=\"color:#1e3c72;font-weight:600;font-size:16px\">${sunrise}</div></td><td style=\"text-align:center;width:50%;padding:15px\"><div style=\"font-size:28px\">🌇</div><div style=\"color:#888;font-size:12px\">Sunset</div><div style=\"color:#1e3c72;font-weight:600;font-size:16px\">${sunset}</div></td></tr></table></td></tr></table><table width=\"100%\" style=\"background:#fff;border-radius:0 0 20px 20px\"><tr><td style=\"padding:20px 15px 25px\"><h2 style=\"color:#1e3c72;margin:0 0 15px;font-size:17px;text-align:center\">📅 5-Day Forecast</h2><table width=\"100%\" cellspacing=\"8\"><tr>${forecastCells}</tr></table></td></tr></table><table width=\"100%\" style=\"margin-top:20px\"><tr><td style=\"text-align:center;padding:10px\"><a href=\"https://openweathermap.org/city/${current.id}\" style=\"display:inline-block;background:linear-gradient(135deg,#1e3c72 0%,#2a5298 100%);color:#fff;text-decoration:none;padding:12px 30px;border-radius:25px;font-weight:600;font-size:14px\">View Full Forecast →</a></td></tr></table><table width=\"100%\"><tr><td style=\"text-align:center;padding:20px;color:#888;font-size:11px\">Powered by <a href=\"https://openweathermap.org\" style=\"color:#667eea\">OpenWeatherMap</a> • Delivered by n8n</td></tr></table></div></body></html>`;\n\nreturn { json: { location, date: dateStr, subject: `Weather for ${location} - ${dateStr}`, htmlMessage: htmlEmail, currentTemp, description } };"
+      },
+      "id": "format-email",
+      "name": "Format HTML Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 0]
+    },
+    {
+      "parameters": {
+        "sendTo": "YOUR_EMAIL@example.com",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.htmlMessage }}",
+        "options": {}
+      },
+      "id": "send-gmail",
+      "name": "Send Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1000, 0],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "gmail",
+          "name": "Gmail OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 6AM Trigger": {
+      "main": [[{"node": "Get Current Weather", "type": "main", "index": 0}, {"node": "Get 5-Day Forecast", "type": "main", "index": 0}]]
+    },
+    "Get Current Weather": {
+      "main": [[{"node": "Merge Weather Data", "type": "main", "index": 0}]]
+    },
+    "Get 5-Day Forecast": {
+      "main": [[{"node": "Merge Weather Data", "type": "main", "index": 1}]]
+    },
+    "Merge Weather Data": {
+      "main": [[{"node": "Format HTML Email", "type": "main", "index": 0}]]
+    },
+    "Format HTML Email": {
+      "main": [[{"node": "Send Gmail", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": [{"name": "weather", "id": "1"}, {"name": "email", "id": "2"}, {"name": "automation", "id": "3"}],
+  "triggerCount": 1,
+  "pinData": {}
+}
