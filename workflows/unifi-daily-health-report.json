@@ -1,0 +1,298 @@
+{
+  "name": "UniFi Network Health Daily Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily 6AM Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://YOUR_UNIFI_IP/proxy/network/integration/v1/sites",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "get-sites",
+      "name": "Get Sites",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CREATE_CREDENTIAL",
+          "name": "UniFi API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const sites = $input.first().json.data || $input.first().json;
+const siteId = sites[0]?.id || 'default';
+return [{ json: { siteId } }];"
+      },
+      "id": "extract-site-id",
+      "name": "Extract Site ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://YOUR_UNIFI_IP/proxy/network/integration/v1/sites/{{ $json.siteId }}/clients",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "get-clients",
+      "name": "Get Clients",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CREATE_CREDENTIAL",
+          "name": "UniFi API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://YOUR_UNIFI_IP/proxy/network/integration/v1/sites/{{ $(\"Extract Site ID\").item.json.siteId }}/devices",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "get-devices",
+      "name": "Get Devices",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CREATE_CREDENTIAL",
+          "name": "UniFi API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://YOUR_UNIFI_IP/proxy/network/integration/v1/sites/{{ $(\"Extract Site ID\").item.json.siteId }}/events?start={{ Date.now() - 86400000 }}&end={{ Date.now() }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "get-security-events",
+      "name": "Get Security Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CREATE_CREDENTIAL",
+          "name": "UniFi API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const clientsData = $(\"Get Clients\").first().json;
+const devicesData = $(\"Get Devices\").first().json;
+const securityData = $input.first().json;
+
+const clients = clientsData.data || clientsData || [];
+const devices = devicesData.data || devicesData || [];
+const allEvents = securityData.data || securityData || [];
+
+const securityKeywords = [\"ips\", \"ids\", \"threat\", \"malware\", \"intrusion\", \"attack\", \"blocked\", \"security\", \"anomaly\", \"suspicious\"];
+const securityEvents = Array.isArray(allEvents) ? allEvents.filter(e => {
+  const eventType = (e.type || e.key || e.category || \"\").toLowerCase();
+  const eventMsg = (e.msg || e.message || e.description || \"\").toLowerCase();
+  return securityKeywords.some(keyword => eventType.includes(keyword) || eventMsg.includes(keyword));
+}) : [];
+
+const wirelessClients = clients.filter(c => !c.wired && !c.is_wired).length;
+const wiredClients = clients.filter(c => c.wired || c.is_wired).length;
+const totalClients = clients.length;
+
+const accessPoints = devices.filter(d => d.type?.includes(\"uap\") || d.type?.includes(\"UAP\") || d.model?.toLowerCase().includes(\"ap\") || d.model?.includes(\"U6\") || d.model?.includes(\"U7\")).length;
+const switches = devices.filter(d => d.type?.includes(\"usw\") || d.type?.includes(\"USW\") || d.model?.toLowerCase().includes(\"switch\")).length;
+const gateways = devices.filter(d => d.type?.includes(\"ugw\") || d.type?.includes(\"UGW\") || d.type?.includes(\"udm\") || d.type?.includes(\"UDM\") || d.model?.toLowerCase().includes(\"gateway\") || d.model?.toLowerCase().includes(\"dream\")).length;
+const totalDevices = devices.length;
+
+const onlineDevices = devices.filter(d => d.state === \"CONNECTED\" || d.state === \"ONLINE\" || d.state === 1 || d.status === \"online\").length;
+const offlineDevices = totalDevices - onlineDevices;
+
+let message = \"🌐 *UniFi Network Health Report*\n\";
+message += \"📅 \" + new Date().toLocaleDateString(\"en-US\", { weekday: \"long\", year: \"numeric\", month: \"long\", day: \"numeric\" }) + \"\n\";
+message += \"🕐 \" + new Date().toLocaleTimeString(\"en-US\", { hour: \"2-digit\", minute: \"2-digit\" }) + \"\n\n\";
+
+message += \"📡 *Network Infrastructure*\n\";
+message += (offlineDevices === 0 ? \"✅\" : \"⚠️\") + \" Devices: \" + onlineDevices + \"/\" + totalDevices + \" online\n\";
+if (gateways > 0) message += \"   └ Gateways: \" + gateways + \"\n\";
+if (accessPoints > 0) message += \"   └ Access Points: \" + accessPoints + \"\n\";
+if (switches > 0) message += \"   └ Switches: \" + switches + \"\n\";
+
+message += \"\n\";
+
+message += \"👥 *Connected Clients*\n\";
+message += \"✅ Total: \" + totalClients + \"\n\";
+if (wirelessClients > 0) message += \"   └ 📶 Wireless: \" + wirelessClients + \"\n\";
+if (wiredClients > 0) message += \"   └ 🔌 Wired: \" + wiredClients + \"\n\";
+
+message += \"\n\";
+
+message += \"🛡️ *CyberSecure Alerts (Last 24h)*\n\";
+if (securityEvents.length === 0) {
+  message += \"✅ No threats detected\n\";
+} else {
+  message += \"⚠️ \" + securityEvents.length + \" alert(s) detected:\n\";
+  const grouped = {};
+  securityEvents.forEach(e => {
+    const category = e.type || e.category || e.key || \"Unknown\";
+    grouped[category] = (grouped[category] || 0) + 1;
+  });
+  Object.entries(grouped).slice(0, 5).forEach(([category, count]) => {
+    message += \"   └ \" + category + \": \" + count + \"\n\";
+  });
+  message += \"\n📋 *Recent Alerts:*\n\";
+  securityEvents.slice(0, 3).forEach(e => {
+    const time = e.timestamp || e.time || e.datetime;
+    const timeStr = time ? new Date(time).toLocaleTimeString(\"en-US\", { hour: \"2-digit\", minute: \"2-digit\" }) : \"\";
+    const desc = e.msg || e.message || e.description || e.type || \"Security event\";
+    message += \"   • \" + (timeStr ? timeStr + \" - \" : \"\") + desc.substring(0, 50) + (desc.length > 50 ? \"...\" : \"\") + \"\n\";
+  });
+}
+
+message += \"\n\";
+
+const hasIssues = offlineDevices > 0 || securityEvents.length > 0;
+if (!hasIssues) {
+  message += \"🟢 *All Systems Operational*\";
+} else if (securityEvents.length > 0) {
+  message += \"🟠 *Security Alerts Require Attention*\";
+} else {
+  message += \"🔴 *\" + offlineDevices + \" Device(s) Offline - Check Dashboard*\";
+}
+
+return [{ json: { message, stats: { totalClients, wirelessClients, wiredClients, totalDevices, onlineDevices, offlineDevices, securityAlerts: securityEvents.length } } }];"
+      },
+      "id": "format-message",
+      "name": "Format Telegram Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, 0]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-send",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1540, 0],
+      "credentials": {
+        "telegramApi": {
+          "id": "CREATE_CREDENTIAL",
+          "name": "Telegram Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily 6AM Trigger": {
+      "main": [[{"node": "Get Sites", "type": "main", "index": 0}]]
+    },
+    "Get Sites": {
+      "main": [[{"node": "Extract Site ID", "type": "main", "index": 0}]]
+    },
+    "Extract Site ID": {
+      "main": [[{"node": "Get Clients", "type": "main", "index": 0}]]
+    },
+    "Get Clients": {
+      "main": [[{"node": "Get Devices", "type": "main", "index": 0}]]
+    },
+    "Get Devices": {
+      "main": [[{"node": "Get Security Events", "type": "main", "index": 0}]]
+    },
+    "Get Security Events": {
+      "main": [[{"node": "Format Telegram Message", "type": "main", "index": 0}]]
+    },
+    "Format Telegram Message": {
+      "main": [[{"node": "Send to Telegram", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {"executionOrder": "v1"},
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1
+}
