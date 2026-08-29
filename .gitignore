@@ -1,0 +1,10 @@
+# n8n credential and secret exports — keep these off git
+*.credential.json
+*credentials*.json
+.env
+.env.*
+!.env.example
+
+# local n8n / editor dumps
+.n8n/
+*.log
